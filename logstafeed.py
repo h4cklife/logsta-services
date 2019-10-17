@@ -33,8 +33,7 @@ from twilio.rest import Client
 from datetime import date, datetime, timedelta
 
 running = 0
-timeout = 4
-timeout_between_logging = 1
+timeout = 5
 
 # Format of the log. Relates to Apache logs that are supportive of Logstalgia
 log = "{0}|{1}|{2}|{3}|{4}\n"
@@ -61,9 +60,9 @@ def send_twilio_sms(to, message):
 
         return message_instance.sid
 
-def _sendmail(to, body):
+def sendmail(to, body):
     """
-    _sendmail(to, body)
+    sendmail(to, body)
 
     :param to:
     :param body:
@@ -136,54 +135,50 @@ for line in processRunning.splitlines():
 
                     # Send email and text alerts for Snort logs : Needs some limits
                     send_twilio_sms(config.TWILIO_NUMBER, message)
-                    _sendmail(config.SMTP_TO, message)
+                    sendmail(config.SMTP_TO, message)
 
                     fh.close()
                 except Exception as e:
                     print(e)
 
-            # Netstat connection logs
-            result = subprocess.check_output("netstat -utn 2", shell=True)
-            results = result.decode('utf8').split('\n')
-            time.sleep(timeout_between_logging)
-            for r in results:
-                if "tcp" in r or "udp" in r:
-                    fh = open("snort.log", "a+")
+        # Netstat connection logs
+        result = subprocess.check_output("netstat -utn 2", shell=True)
+        results = result.decode('utf8').split('\n')
+        for r in results:
+            if "tcp" in r or "udp" in r:
+                fh = open("snort.log", "a+")
 
-                    timestamp = int(time.time())
+                timestamp = int(time.time())
 
-                    head, sep, tail = r.partition(':')
-                    tmp_int = head.replace("tcp        0     ", "")
-                    tmp_int = tmp_int.replace(" 0 ", "")
-                    tmp_int = tmp_int.replace("36 ", "")
-                    tmp_int = tmp_int.replace(" 1 ", "")
-                    tmp_int = tmp_int.replace("72 ", "")
+                head, sep, tail = r.partition(':')
+                tmp_int = head.replace("tcp        0     ", "")
+                tmp_int = tmp_int.replace(" 0 ", "")
+                tmp_int = tmp_int.replace("36 ", "")
+                tmp_int = tmp_int.replace(" 1 ", "")
+                tmp_int = tmp_int.replace("72 ", "")
 
-                    internal_host = tmp_int
+                internal_host = tmp_int
 
-                    tmp_port = tail.split(" ")[0]
+                tmp_port = tail.split(" ")[0]
 
-                    internal_port = tmp_port
+                internal_port = tmp_port
 
-                    ehead, esep, etail = tail.partition(":")
-                    exhead, exsep, extail = ehead[9:].partition(" ")
+                ehead, esep, etail = tail.partition(":")
+                exhead, exsep, extail = ehead[9:].partition(" ")
 
-                    external_host = extail.replace(" ", "")
+                external_host = extail.replace(" ", "")
 
-                    tmp_export = etail.split(" ")[0]
-                    external_port = tmp_export
+                tmp_export = etail.split(" ")[0]
+                external_port = tmp_export
 
-                    con_type = r[:3]
+                con_type = r[:3]
 
-                    # Example of the output
-                    # 1371769989|127.0.0.1|/tcp/192.168.1.15|200|1024
-                    message = log.format(timestamp, internal_host, "/{0}/{1}:{2}:{3}".format(con_type, internal_port,
-                                        external_host, external_port), '200', '1024')
+                # Example of the output
+                # 1371769989|127.0.0.1|/tcp/192.168.1.15|200|1024
+                message = log.format(timestamp, internal_host, "/{0}/{1}:{2}:{3}".format(con_type, internal_port,
+                                    external_host, external_port), '200', '1024')
 
-                    fh.write(message)
+                fh.write(message)
 
-                    fh.close()
-
-            # Needs a little time so we don't hammer the system and logging, If ran as separate scripts this works
-            #   better for the netstat logging portion but this will still catch most logs even with the sleep interval
-            time.sleep(timeout)
+                fh.close()
+        time.sleep(timeout)

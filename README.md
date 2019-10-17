@@ -12,7 +12,9 @@ Check the extras directory for the originals. (May need modified and may not be 
 
 Usage:
 
-    1. python3 logstafeed.py
-    2. tail -F snort.log | logstalgia --sync
+    1. mv example_config.py to config.py
+    2. vim config.py, apply your configurations
+    3. python3 logstafeed.py
+    4. tail -F snort.log | logstalgia --sync
 
 Developed by: @h4cklife

@@ -134,8 +134,8 @@ for line in processRunning.splitlines():
 																  dst_port), '200', '1024')
                     fh.write(message)
 
-                    # Send email and text alerts for Snort logs
-                    #send_twilio_sms(config.TWILIO_NUMBER, message)
+                    # Send email and text alerts for Snort logs : Needs some limits
+                    send_twilio_sms(config.TWILIO_NUMBER, message)
                     _sendmail(config.SMTP_TO, message)
 
                     fh.close()

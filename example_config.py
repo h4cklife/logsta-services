@@ -6,6 +6,8 @@ CONFIGURATIONS
 
 """ CONFIGURATION """
 
+IFACE           = 'enp13s0f1'
+TCPDUMP         = True
 EMAIL_ALERTS    = True
 TWILIO_ALERTS   = True
 

@@ -3,21 +3,22 @@
 """
 Logstafeed
 
-This Python driven script will monitor a network for connections via Netstat and Snort logs via auth.log.
+
+This Python driven script will monitor a network for connections via TCPDump and Snort logs via auth.log.
 It will covert logs into an Apache / Logstalgia accepted format and save them to a separate log file.
 That file will then be redirected into Logstalgia and synced to display the logging in a visual format.
 Leet right?
 Enjoy!
 
-This script may run better split into 2 scripts, but I wanted them combined, so FTW. Here is the combined version.
-
 Check the extras directory for the originals. (May need modified and may not be up to date)
 
 Usage:
     1. mv example_config.py to config.py
-    2. vim config.py, apply your configurations
-    3. python3 logstafeed.py
-    4. tail -F snort.log | logstalgia --sync
+    2. vim config.py and apply your configurations
+    3. touch snort.log
+    4. touch connections.log
+    5. sudo ./logstafeed.py
+    6. tail -F snort.log -F connections.log | logstalgia --sync
 
 Developed by: @h4cklife
 
@@ -32,13 +33,11 @@ import smtplib
 from twilio.rest import Client
 from datetime import date, datetime, timedelta
 
-running = 0
-timeout = 5
-
 # Format of the log. Relates to Apache logs that are supportive of Logstalgia
 log = "{0}|{1}|{2}|{3}|{4}\n"
 
 processRunning = subprocess.check_output(['ps','aux'])
+running = 0
 
 def send_twilio_sms(to, message):
     """
@@ -102,6 +101,14 @@ for line in processRunning.splitlines():
     p = select.poll()
     p.register(f.stdout)
 
+    f2 = None
+    p2 = None
+    if config.TCPDUMP:
+        # Tcpdump logging
+        f2 = subprocess.Popen(['tcpdump', '-i', config.IFACE], stdout=subprocess.PIPE, stderr=subprocess.PIPE)
+        p2 = select.poll()
+        p2.register(f2.stdout)
+
     # While True, do our logging procedure
     while True:
         if p.poll(1):
@@ -141,44 +148,47 @@ for line in processRunning.splitlines():
                 except Exception as e:
                     print(e)
 
-        # Netstat connection logs
-        result = subprocess.check_output("netstat -utn 2", shell=True)
-        results = result.decode('utf8').split('\n')
-        for r in results:
-            if "tcp" in r or "udp" in r:
-                fh = open("snort.log", "a+")
+        if config.TCPDUMP:
+            if p2.poll(1):
+                # Auth.log Snort logs
+                line = f2.stdout.readline().decode('utf8')
+                # print(line+"\n")
+                if "IP" in line and not "sccoast" in line and not "IP6" in line:
+                    try:
+                        # Parsing of the auth.log snort log
+                        fh = open("connections.log", "a+")
 
-                timestamp = int(time.time())
+                        timestamp = int(time.time())
 
-                head, sep, tail = r.partition(':')
-                tmp_int = head.replace("tcp        0     ", "")
-                tmp_int = tmp_int.replace(" 0 ", "")
-                tmp_int = tmp_int.replace("36 ", "")
-                tmp_int = tmp_int.replace(" 1 ", "")
-                tmp_int = tmp_int.replace("72 ", "")
+                        try:
+                            src_ip = line.split(" IP ")[1].split(" > ")[0].split(".")[0:4]
+                            src_ip = '.'.join(str(x) for x in src_ip)
+                        except IndexError:
+                            src_ip = line.split(" IP ")[1].split(" > ")[0]
 
-                internal_host = tmp_int
+                        try:
+                            src_port = line.split(" IP ")[1].split(" > ")[0].split(".")[4]
+                        except IndexError:
+                            src_port = 'NONE'
 
-                tmp_port = tail.split(" ")[0]
+                        try:
+                            dst_ip = line.split(" IP ")[1].split(" > ")[1].split(":")[0].split(".")[0:len(line.split(" IP ")[1].split(" > ")[1].split(":")[0].split(".")) -1]
+                            dst_ip = '.'.join(str(x) for x in dst_ip)
+                        except IndexError:
+                            dst_ip = line.split(" IP ")[1].split(" > ")[1].split(":")[0].split(".")
 
-                internal_port = tmp_port
+                        try:
+                            dst_port = line.split(" IP ")[1].split(" > ")[1].split(":")[0].split(".")[4]
+                        except IndexError:
+                            dst_port = 'NONE'
 
-                ehead, esep, etail = tail.partition(":")
-                exhead, exsep, extail = ehead[9:].partition(" ")
+                        # Example of the output
+                        # 1571270436|192.168.10.5|/TCP/49418:SomeHost:6667|200|1024
+                        message = log.format(timestamp, src_ip,
+                                             "/{0}/{1}:{2}:{3}".format('TCPDUMP', src_port, dst_ip,
+                                                                       dst_port), '200', '1024')
 
-                external_host = extail.replace(" ", "")
-
-                tmp_export = etail.split(" ")[0]
-                external_port = tmp_export
-
-                con_type = r[:3]
-
-                # Example of the output
-                # 1371769989|127.0.0.1|/tcp/192.168.1.15|200|1024
-                message = log.format(timestamp, internal_host, "/{0}/{1}:{2}:{3}".format(con_type, internal_port,
-                                    external_host, external_port), '200', '1024')
-
-                fh.write(message)
-
-                fh.close()
-        time.sleep(timeout)
+                        fh.write(message)
+                        fh.close()
+                    except Exception as e:
+                        print(e)

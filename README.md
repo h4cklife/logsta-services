@@ -15,6 +15,6 @@ Usage:
     3. touch snort.log
     4. touch connections.log
     5. sudo ./logstafeed.py
-    6. tail -F snort.log -F connections.log | logstalgia --sync
+    6. tail -F snort.log -F connections.log | logstalgia -x -g "SNORT,URI=^/SNORT/*,30,FF0000" -g "WAN-OUT,HOST=^192,30,FFFF00" -g "WAN-IN,URI=^/TCPDUMP/*,30,00FF00" --sync
 
 Developed by: @h4cklife

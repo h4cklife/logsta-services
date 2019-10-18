@@ -18,7 +18,8 @@ Usage:
     3. touch snort.log
     4. touch connections.log
     5. sudo ./logstafeed.py
-    6. tail -F snort.log -F connections.log | logstalgia --sync
+    6. tail -F snort.log -F connections.log | logstalgia -x -g "SNORT,URI=^/SNORT/*,30,FF0000" \
+        -g "WAN-OUT,HOST=^192,30,FFFF00" -g "WAN-IN,URI=^/TCPDUMP/*,30,00FF00" --sync
 
 Developed by: @h4cklife
 
@@ -114,12 +115,13 @@ for line in processRunning.splitlines():
         if p.poll(1):
             # Auth.log Snort logs
             line = f.stdout.readline().decode('utf8')
-            #print(line+"\n")
             if "snort" in line and not "message repeated" in line:
                 try:
-                    # Parsing of the auth.log snort log
                     fh = open("snort.log", "a+")
+
                     timestamp = int(time.time())
+
+                    # Parsing of the auth.log snort log
                     src_ip = (line.split("{TCP} "))[1].split(":")[0]
                     src_port = (line.split(":"))[8].split(" ")[0]
                     dst_ip = (line.split("-> "))[1].split(":")[0]
@@ -134,15 +136,17 @@ for line in processRunning.splitlines():
                     proto = (line.split("{"))[1].split("}")[0]
 
                     # Example of the output
-                    # 1571270436|192.168.10.5|/TCP/49418:SomeHost:6667|200|1024
+                    # 1571270436|192.168.10.5|/TCP/49418:123.123.123.123:6667|200|1024
                     message = log.format(timestamp, src_ip,
-										"/{0}/{1}:{2}:{3}".format(proto, src_port, dst_host,
+										"/SNORT/{0}/{1}:{2}:{3}".format(proto, src_port, dst_host,
 																  dst_port), '200', '1024')
                     fh.write(message)
 
                     # Send email and text alerts for Snort logs : Needs some limits
-                    send_twilio_sms(config.TWILIO_NUMBER, message)
-                    sendmail(config.SMTP_TO, message)
+                    if config.TWILIO_ALERTS:
+                        send_twilio_sms(config.TWILIO_NUMBER, message)
+                    if config.EMAIL_ALERTS:
+                        sendmail(config.SMTP_TO, message)
 
                     fh.close()
                 except Exception as e:
@@ -150,16 +154,15 @@ for line in processRunning.splitlines():
 
         if config.TCPDUMP:
             if p2.poll(1):
-                # Auth.log Snort logs
                 line = f2.stdout.readline().decode('utf8')
-                # print(line+"\n")
-                if "IP" in line and not "sccoast" in line and not "IP6" in line:
+                if any(filter in line for filter in config.TCPDUMP_INCLUDE) \
+                        and not any(filter in line for filter in config.TCPDUMP_EXCLUDE):
                     try:
-                        # Parsing of the auth.log snort log
                         fh = open("connections.log", "a+")
 
                         timestamp = int(time.time())
 
+                        # Parsing of tcpdump output
                         try:
                             src_ip = line.split(" IP ")[1].split(" > ")[0].split(".")[0:4]
                             src_ip = '.'.join(str(x) for x in src_ip)
@@ -183,11 +186,10 @@ for line in processRunning.splitlines():
                             dst_port = 'NONE'
 
                         # Example of the output
-                        # 1571270436|192.168.10.5|/TCP/49418:SomeHost:6667|200|1024
+                        # 1571270436|192.168.10.5|/TCPDUMP/49418:example.com:https|200|1024
                         message = log.format(timestamp, src_ip,
                                              "/{0}/{1}:{2}:{3}".format('TCPDUMP', src_port, dst_ip,
                                                                        dst_port), '200', '1024')
-
                         fh.write(message)
                         fh.close()
                     except Exception as e:
